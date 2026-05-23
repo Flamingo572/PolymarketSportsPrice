@@ -126,9 +126,6 @@ venv.bak/
 
 # Spyder project settings
 .spyderproject
-.spyproject
-
-# Rope project settings
 .ropeproject
 
 # mkdocs documentation
@@ -148,11 +145,11 @@ dmypy.json
 # Cython debug symbols
 cython_debug/
 
-# PyCharm
+# IDE and System Files
 .idea/
-
-# VS Code
 .vscode/
+.DS_Store
+Thumbs.db
 
 # Project Specific
 apiKeys.py

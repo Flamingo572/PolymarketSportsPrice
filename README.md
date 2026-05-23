@@ -11,6 +11,8 @@ A Python-based trading bot for [Polymarket](https://polymarket.com/), utilizing 
 - `sportsRead.py`: Handles WebSocket connections for real-time sports data (scores, game state).
 - `apiKeys.py`: (Ignored by git) Should contain your Polymarket API credentials and Private Key.
 - `mainPrices.py`: A legacy/utility script for basic price and score reading.
+- `app.py`: A FastAPI-based web server that provides a real-time dashboard.
+- `static/`: Contains the frontend assets (HTML, etc.) for the web dashboard.
 
 ## Features
 
@@ -50,3 +52,6 @@ The core trade logic is located in the `executeTradeLogic` function within `asci
 ## Security Warning
 
 This bot requires your Polymarket Private Key to interact with the CLOB. Never share your `apiKeys.py` file or commit it to a public repository.
+
+---
+*Disclaimer: The website code was made by an AI but the logic of everything was made by me.*

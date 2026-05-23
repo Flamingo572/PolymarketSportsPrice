@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Polymarket Live Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .signal-flash {
+            animation: flash 1s ease-in-out;
+        }
+        @keyframes flash {
+            0%, 100% { background-color: transparent; }
+            50% { background-color: #fef08a; }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen font-sans">
+    <div class="container mx-auto px-4 py-8 max-w-4xl">
+        <header class="mb-8 text-center">
+            <h1 class="text-4xl font-bold text-blue-600 mb-2">Polymarket Bot Dashboard</h1>
+            <p class="text-gray-600">Real-time market tracking and trade signals</p>
+        </header>
+
+        <!-- Control Panel -->
+        <section class="bg-white rounded-lg shadow-md p-6 mb-8">
+            <h2 class="text-xl font-semibold mb-4 border-b pb-2">Control Panel</h2>
+            <div class="flex flex-col md:flex-row gap-4">
+                <input type="text" id="slugInput" placeholder="Enter match slug (e.g., epl-sun-ful-2026-02-22)" 
+                    class="flex-1 px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <button id="startBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-md transition duration-200">
+                    Start Tracking
+                </button>
+                <button id="stopBtn" class="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-6 rounded-md transition duration-200 hidden">
+                    Stop
+                </button>
+            </div>
+            <div id="statusText" class="mt-2 text-sm text-gray-500 italic">Disconnected</div>
+        </section>
+
+        <!-- Main Dashboard Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+            
+            <!-- Match Status Card -->
+            <section class="bg-white rounded-lg shadow-md p-6">
+                <h2 class="text-xl font-semibold mb-4 border-b pb-2 flex items-center gap-2">
+                    <span class="w-3 h-3 bg-green-500 rounded-full"></span>
+                    Match Status
+                </h2>
+                <div id="matchDisplay" class="space-y-4">
+                    <div class="flex justify-between items-center text-2xl font-bold">
+                        <div id="homeTeam" class="text-gray-800">Home</div>
+                        <div class="text-gray-400">vs</div>
+                        <div id="awayTeam" class="text-gray-800">Away</div>
+                    </div>
+                    <div class="text-center text-5xl font-extrabold text-blue-800 py-4" id="currentScore">
+                        0 - 0
+                    </div>
+                    <div class="flex justify-between text-sm text-gray-600">
+                        <span>Time: <span id="matchTime" class="font-mono">--:--</span></span>
+                        <span>Period: <span id="matchPeriod" class="font-semibold">--</span></span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Market Data Card -->
+            <section class="bg-white rounded-lg shadow-md p-6">
+                <h2 class="text-xl font-semibold mb-4 border-b pb-2 flex items-center gap-2">
+                    <span class="w-3 h-3 bg-blue-500 rounded-full"></span>
+                    Market Data
+                </h2>
+                <div id="marketDisplay" class="space-y-6">
+                    <div class="text-center">
+                        <div class="text-gray-500 text-sm uppercase tracking-wide">Last Executed Trade</div>
+                        <div id="lastTradePrice" class="text-4xl font-bold text-gray-900">$0.00</div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="bg-green-50 p-3 rounded-lg text-center">
+                            <div class="text-green-600 text-xs font-bold uppercase">Best Bid</div>
+                            <div id="bestBid" class="text-xl font-bold">$0.00</div>
+                        </div>
+                        <div class="bg-red-50 p-3 rounded-lg text-center">
+                            <div class="text-red-600 text-xs font-bold uppercase">Best Ask</div>
+                            <div id="bestAsk" class="text-xl font-bold">$0.00</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <!-- Signal Log -->
+        <section class="bg-white rounded-lg shadow-md p-6 mt-8">
+            <h2 class="text-xl font-semibold mb-4 border-b pb-2">Trade Signals & Activity Log</h2>
+            <div id="signalLog" class="h-64 overflow-y-auto space-y-2 text-sm font-mono bg-gray-50 p-4 rounded border">
+                <div class="text-gray-400 italic">Waiting for connection...</div>
+            </div>
+        </section>
+    </div>
+
+    <script>
+        let socket = null;
+        const slugInput = document.getElementById('slugInput');
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const statusText = document.getElementById('statusText');
+        const signalLog = document.getElementById('signalLog');
+
+        function log(message, type = 'info') {
+            const div = document.createElement('div');
+            const time = new Date().toLocaleTimeString();
+            let color = 'text-gray-600';
+            if (type === 'signal') color = 'text-yellow-600 font-bold bg-yellow-50 p-1 rounded';
+            if (type === 'error') color = 'text-red-600 font-bold';
+            if (type === 'success') color = 'text-green-600 font-bold';
+
+            div.className = `${color} border-b border-gray-100 pb-1`;
+            div.innerHTML = `<span class="text-gray-400">[${time}]</span> ${message}`;
+            signalLog.prepend(div);
+        }
+
+        startBtn.addEventListener('click', () => {
+            const slug = slugInput.value.trim();
+            if (!slug) {
+                alert('Please enter a slug');
+                return;
+            }
+
+            if (socket) socket.close();
+
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            socket = new WebSocket(`${protocol}//${window.location.host}/ws/${slug}`);
+
+            statusText.innerText = `Connecting to ${slug}...`;
+            statusText.className = "mt-2 text-sm text-blue-500 font-bold";
+
+            socket.onopen = () => {
+                statusText.innerText = `Connected: ${slug}`;
+                statusText.className = "mt-2 text-sm text-green-500 font-bold";
+                startBtn.classList.add('hidden');
+                stopBtn.classList.remove('hidden');
+                log(`Started tracking slug: ${slug}`, 'success');
+            };
+
+            socket.onmessage = (event) => {
+                const payload = JSON.parse(event.data);
+                handleMessage(payload);
+            };
+
+            socket.onclose = () => {
+                statusText.innerText = "Disconnected";
+                statusText.className = "mt-2 text-sm text-gray-500 italic";
+                startBtn.classList.remove('hidden');
+                stopBtn.classList.add('hidden');
+                log("Connection closed.", "info");
+                socket = null;
+            };
+
+            socket.onerror = (err) => {
+                log(`WebSocket Error`, "error");
+            };
+        });
+
+        stopBtn.addEventListener('click', () => {
+            if (socket) socket.close();
+        });
+
+        function handleMessage(payload) {
+            const { type, data, signal } = payload;
+
+            if (signal) {
+                log(`🚀 SIGNAL: ${signal.message} (Score: ${signal.new_score})`, 'signal');
+                document.body.classList.add('signal-flash');
+                setTimeout(() => document.body.classList.remove('signal-flash'), 1000);
+            }
+
+            if (type === 'sports') {
+                updateSportsUI(data);
+            } else if (type === 'market') {
+                updateMarketUI(data);
+            } else if (type === 'error') {
+                log(payload.message, 'error');
+            }
+        }
+
+        function updateSportsUI(data) {
+            if (data.homeTeam) document.getElementById('homeTeam').innerText = data.homeTeam;
+            if (data.awayTeam) document.getElementById('awayTeam').innerText = data.awayTeam;
+            if (data.score) document.getElementById('currentScore').innerText = data.score;
+            if (data.time) document.getElementById('matchTime').innerText = data.time;
+            if (data.period) document.getElementById('matchPeriod').innerText = data.period;
+        }
+
+        function updateMarketUI(data) {
+            // Market data can be Book Snapshot, Price Change, or Last Trade
+            if (data.event_type === 'last_trade_price') {
+                document.getElementById('lastTradePrice').innerText = `$${parseFloat(data.price).toFixed(2)}`;
+                log(`Trade: ${data.size} @ $${data.price}`);
+            } else if (data.event_type === 'price_change') {
+                if (data.best_bid) document.getElementById('bestBid').innerText = `$${parseFloat(data.best_bid).toFixed(2)}`;
+                if (data.best_ask) document.getElementById('bestAsk').innerText = `$${parseFloat(data.best_ask).toFixed(2)}`;
+            } else if (data.event_type === 'book') {
+                if (data.bids && data.bids.length > 0) {
+                    document.getElementById('bestBid').innerText = `$${parseFloat(data.bids[0].price).toFixed(2)}`;
+                }
+                if (data.asks && data.asks.length > 0) {
+                    document.getElementById('bestAsk').innerText = `$${parseFloat(data.asks[0].price).toFixed(2)}`;
+                }
+            }
+        }
+    </script>
+</body>
+</html>
